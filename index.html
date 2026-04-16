@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Moderner Klassen-Dienstplan mit Cloud-Sync">
+    <meta name="theme-color" content="#4f46e5">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Dienstplan">
+
+    <title>Dienstplan 2026</title>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { 
+            background: #cbd5e1;
+            border-radius: 8px;
+        }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .animate-scale-in { animation: scaleIn 0.2s ease-out; }
+
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .dark .card-hover:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, createContext, useContext } = React;
+
+        // ==================== CONFIG ====================
+        const BIN_ID = "694007d2d0ea881f402ae23e";
+        const API_KEY = "$2a$10$vkil.dy/TZnGQ8xlENj2L.iHbKVWGSuJhXREXsM8OS8NthsCsI8Di";
+        const ADMIN_PASS = "1234";
+
+        const STUDENTS = [
+            "Hasan", "Saif",
+            "Romana", "Zoya",
+            "Mika", "Emir",
+            "Emilia", "Sama",
+            "Marigona", "Celine",
+            "Jacob Robert", "Hamid",
+            "Lara", "Pia",
+            "Elisaveta", "Nele",
+            "Dejan", "Phillip",
+            "Tristan", "Alieu",
+            "Patricia", "Suleiman",
+            "Leyla",
+            "Adrian", "Tyron"
+        ];
+
+        const CONFIG = {
+            startDate: new Date('2026-01-12'),
+            endDate: new Date('2026-07-02'),
+            duties: [
+                { id: 'tafel', name: 'Tafel', icon: '🧽', color: 'blue', desc: 'Nach jeder Stunde wischen' },
+                { id: 'fegen', name: 'Fegen', icon: '🧹', color: 'orange', desc: 'Raum am Ende fegen' },
+                { id: 'austeilen', name: 'Austeilen', icon: '📄', color: 'amber', desc: 'Material verteilen' },
+                { id: 'supervisor', name: 'Supervisor', icon: '🦅', color: 'purple', desc: 'Kontrolle & Hilfe', check: true },
+                { id: 'handy', name: 'Handy Hotel', icon: '📱', color: 'cyan', desc: 'Morgens einsammeln', daily: true },
+                { id: 'muell', name: 'Müll', icon: '🗑️', color: 'slate', desc: 'Müll trennen' }
+            ]
+        };
+
+        const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr'];
+
+        const COLORS = {
+            blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', hover: 'hover:border-blue-300 dark:hover:border-blue-700' },
+            orange: { bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-600 dark:text-orange-400', hover: 'hover:border-orange-300 dark:hover:border-orange-700' },
+            amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-600 dark:text-amber-400', hover: 'hover:border-amber-300 dark:hover:border-amber-700' },
+            purple: { bg: 'bg-purple-50 dark:bg-purple-950/30', border: 'border-purple-200 dark:border-purple-800', text: 'text-purple-600 dark:text-purple-400', hover: 'hover:border-purple-300 dark:hover:border-purple-700' },
+            cyan: { bg: 'bg-cyan-50 dark:bg-cyan-950/30', border: 'border-cyan-200 dark:border-cyan-800', text: 'text-cyan-600 dark:text-cyan-400', hover: 'hover:border-cyan-300 dark:hover:border-cyan-700' },
+            slate: { bg: 'bg-slate-50 dark:bg-slate-900/30', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-600 dark:text-slate-400', hover: 'hover:border-slate-300 dark:hover:border-slate-600' }
+        };
+
+        // ==================== UTILS ====================
+        const Utils = {
+            formatDate: (d) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+            getWeekId: (idx) => `W${idx}`,
+            calculateWeekDiff: (now, start) => {
+                if (now < start) return 0;
+                const diff = Math.abs(now - start);
+                return Math.floor(Math.ceil(diff / (1000 * 60 * 60 * 24)) / 7);
+            },
+            generateRotation: (weekOffset, studentList) => {
+                const len = studentList.length;
+                const shift = (weekOffset * 2) % len;
+                const rotated = studentList.map((_, i) => {
+                    let index = (i - shift) % len;
+                    if (index < 0) index += len;
+                    return studentList[index];
+                });
+                return rotated;
+            }
+        };
+
+        // ==================== TOAST CONTEXT ====================
+        const ToastContext = createContext();
+
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+
+            const addToast = (message, type = 'info') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+            };
+
+            const icons = { success: '✓', error: '✕', info: 'i' };
+            const colors = {
+                success: 'bg-emerald-500 border-emerald-400',
+                error: 'bg-red-500 border-red-400',
+                info: 'bg-indigo-500 border-indigo-400'
+            };
+
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 no-print">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`animate-slide-in ${colors[t.type]} text-white px-4 py-3 rounded-xl shadow-xl border flex items-center gap-3 min-w-[280px]`}>
+                                <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center font-bold">
+                                    {icons[t.type]}
+                                </div>
+                                <span className="font-medium text-sm">{t.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        const useToast = () => useContext(ToastContext);
+
+        // ==================== COMPONENTS ====================
+
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4 animate-fade-in no-print" onClick={onClose}>
+                    <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
+                    <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                            <h3 className="font-bold text-lg">{title}</h3>
+                            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center justify-center text-slate-400">
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-6">{children}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Skeleton = () => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
+                        <div className="animate-pulse">
+                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4"></div>
+                            <div className="space-y-3">
+                                <div className="h-12 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                                <div className="h-12 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+
+        // ==================== MAIN APP ====================
+        const App = () => {
+            const [currentWeek, setCurrentWeek] = useState(0);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [darkMode, setDarkMode] = useState(false);
+            const [modals, setModals] = useState({ login: false, sick: false, settings: false });
+            const [selectedStudent, setSelectedStudent] = useState(null);
+            const [data, setData] = useState({ checklist: {}, sickLog: {} });
+            const [syncStatus, setSyncStatus] = useState('connecting');
+            const [isLoaded, setIsLoaded] = useState(false);
+            const { addToast } = useToast();
+
+            // Dark Mode
+            useEffect(() => {
+                const saved = localStorage.getItem('darkMode') === 'true';
+                setDarkMode(saved);
+            }, []);
+
+            useEffect(() => {
+                document.documentElement.classList.toggle('dark', darkMode);
+                localStorage.setItem('darkMode', darkMode);
+            }, [darkMode]);
+
+            // Load Data
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        const local = localStorage.getItem('dienstplan_v2');
+                        if (local) setData(JSON.parse(local));
+
+                        const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, { 
+                            headers: { 'X-Master-Key': API_KEY } 
+                        });
+                        
+                        if (res.ok) {
+                            const json = await res.json();
+                            const cloud = json.record || json;
+                            setData({ checklist: cloud.checklist || {}, sickLog: cloud.sickLog || {} });
+                            setSyncStatus('online');
+                            addToast("Mit Cloud synchronisiert", "success");
+                        }
+                    } catch (e) {
+                        setSyncStatus('offline');
+                        addToast("Offline-Modus", "info");
+                    } finally {
+                        setIsLoaded(true);
+                        const now = new Date();
+                        const weeks = Utils.calculateWeekDiff(now, CONFIG.startDate);
+                        setCurrentWeek(weeks);
+                    }
+                };
+                init();
+            }, []);
+
+            // Auto-Save
+            useEffect(() => {
+                if (!isLoaded) return;
+                localStorage.setItem('dienstplan_v2', JSON.stringify(data));
+
+                const timer = setTimeout(async () => {
+                    if (syncStatus === 'offline') return;
+                    try {
+                        await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'X-Master-Key': API_KEY },
+                            body: JSON.stringify(data)
+                        });
+                        setSyncStatus('online');
+                    } catch (e) {
+                        setSyncStatus('offline');
+                    }
+                }, 2000);
+
+                return () => clearTimeout(timer);
+            }, [data, isLoaded]);
+
+            // Generate Roster
+            const roster = useMemo(() => {
+                const rotated = Utils.generateRotation(currentWeek, STUDENTS);
+                const assignments = [];
+                let idx = 0;
+                CONFIG.duties.forEach(duty => {
+                    if (idx + 1 < rotated.length) {
+                        assignments.push({ duty, pair: [rotated[idx], rotated[idx+1]] });
+                        idx += 2;
+                    }
+                });
+                return { assignments, pause: rotated.slice(idx) };
+            }, [currentWeek]);
+
+            const weekDates = useMemo(() => {
+                const start = new Date(CONFIG.startDate);
+                start.setDate(start.getDate() + (currentWeek * 7));
+                const end = new Date(start);
+                end.setDate(start.getDate() + 4);
+                return { start, end };
+            }, [currentWeek]);
+
+            const weekId = Utils.getWeekId(currentWeek);
+
+            // Actions
+            const handleLogin = (pwd) => {
+                if (pwd === ADMIN_PASS) {
+                    setIsAdmin(true);
+                    setModals({...modals, login: false});
+                    addToast("Angemeldet als Admin", "success");
+                } else {
+                    addToast("Falsches Passwort", "error");
+                }
+            };
+
+            const openSickModal = (student) => {
+                if (!isAdmin) { 
+                    setModals({...modals, login: true}); 
+                    return; 
+                }
+                setSelectedStudent(student);
+                setModals({...modals, sick: true});
+            };
+
+            const updateSick = (isSick, substitute) => {
+                const key = `${weekId}-${selectedStudent}`;
+                const newData = { ...data };
+                if (isSick) {
+                    newData.sickLog[key] = { isSick: true, substitute };
+                } else {
+                    delete newData.sickLog[key];
+                }
+                setData(newData);
+                setModals({...modals, sick: false});
+                addToast(isSick ? "Als krank markiert" : "Als gesund markiert", "success");
+            };
+
+            const toggleCheck = (id) => {
+                setData(prev => ({
+                    ...prev,
+                    checklist: { ...prev.checklist, [id]: !prev.checklist[id] }
+                }));
+            };
+
+            const exportData = () => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `dienstplan_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                addToast("Backup heruntergeladen", "success");
+            };
+
+            const getSick = (student) => {
+                const entry = data.sickLog[`${weekId}-${student}`];
+                return entry || null;
+            };
+
+            if (!isLoaded) return (
+                <div className="min-h-screen flex items-center justify-center p-6">
+                    <Skeleton />
+                </div>
+            );
+
+            const isEnded = new Date() > CONFIG.endDate;
+
+            return (
+                <div className="min-h-screen">
+                    {/* Header */}
+                    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shadow-sm no-print">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                            <div className="flex justify-between items-center gap-4">
+                                {/* Logo */}
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                                        📋
+                                    </div>
+                                    <div className="hidden sm:block">
+                                        <h1 className="text-lg font-bold text-slate-900 dark:text-white">Dienstplan</h1>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <div className={`w-2 h-2 rounded-full ${syncStatus === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`}></div>
+                                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                                                {syncStatus === 'online' ? 'Online' : 'Offline'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Week Navigation */}
+                                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+                                    <button onClick={() => setCurrentWeek(c => Math.max(0, c - 1))} 
+                                        className="w-9 h-9 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors flex items-center justify-center font-bold disabled:opacity-30"
+                                        disabled={currentWeek === 0}>
+                                        ←
+                                    </button>
+                                    
+                                    <div className="px-3 text-center min-w-[120px]">
+                                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Woche {currentWeek + 1}</div>
+                                        <div className="text-xs font-bold">{Utils.formatDate(weekDates.start)} - {Utils.formatDate(weekDates.end)}</div>
+                                    </div>
+
+                                    <button onClick={() => setCurrentWeek(c => c + 1)} 
+                                        className="w-9 h-9 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors flex items-center justify-center font-bold">
+                                        →
+                                    </button>
+                                </div>
+                                
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setDarkMode(!darkMode)} 
+                                        className="w-9 h-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center text-lg">
+                                        {darkMode ? '☀️' : '🌙'}
+                                    </button>
+                                    
+                                    <button onClick={() => setModals({...modals, settings: true})} 
+                                        className="w-9 h-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center text-lg">
+                                        ⚙️
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {isEnded ? (
+                            <div className="flex flex-col items-center justify-center py-32 text-center animate-fade-in">
+                                <div className="text-8xl mb-6">🎉</div>
+                                <h2 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">Schöne Ferien!</h2>
+                                <p className="text-lg text-slate-600 dark:text-slate-400">Das Schuljahr ist beendet</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Duty Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                                    {roster.assignments.map(({ duty, pair }) => {
+                                        const colors = COLORS[duty.color];
+                                        return (
+                                            <div key={duty.id} className="card-hover bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                {/* Header */}
+                                                <div className="flex items-start justify-between mb-5">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-2xl">{duty.icon}</span>
+                                                            <h3 className={`text-lg font-bold ${colors.text}`}>{duty.name}</h3>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">{duty.desc}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Students */}
+                                                <div className="space-y-3 mb-5">
+                                                    {pair.map((student, idx) => {
+                                                        const sick = getSick(student);
+                                                        const isSick = !!sick;
+                                                        
+                                                        return (
+                                                            <button key={idx} onClick={() => openSickModal(student)} 
+                                                                className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
+                                                                    isSick 
+                                                                        ? 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800' 
+                                                                        : `${colors.bg} ${colors.border} ${colors.hover}`
+                                                                }`}>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold text-white ${
+                                                                        isSick ? 'bg-red-500' : 'bg-indigo-500'
+                                                                    }`}>
+                                                                        {student.charAt(0)}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className={`font-semibold text-sm truncate ${isSick ? 'line-through text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                                                                            {student}
+                                                                        </div>
+                                                                        {isSick && sick.substitute && (
+                                                                            <div className="text-xs text-slate-600 dark:text-slate-400 truncate">
+                                                                                → {sick.substitute}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {isSick && (
+                                                                        <span className="text-xs font-bold text-red-600 dark:text-red-400">🤒</span>
+                                                                    )}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Checks */}
+                                                {duty.check && (
+                                                    <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Erledigt?</span>
+                                                        <input type="checkbox" 
+                                                            checked={!!data.checklist[`${weekId}-${duty.id}`]} 
+                                                            onChange={() => toggleCheck(`${weekId}-${duty.id}`)}
+                                                            className="w-5 h-5 rounded border-2 border-slate-300 dark:border-slate-600 text-indigo-500 focus:ring-2 focus:ring-indigo-500" />
+                                                    </label>
+                                                )}
+                                                
+                                                {duty.daily && (
+                                                    <div className="grid grid-cols-5 gap-2">
+                                                        {WEEKDAYS.map((day, i) => (
+                                                            <label key={i} className="flex flex-col items-center gap-2 cursor-pointer">
+                                                                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{day}</span>
+                                                                <input type="checkbox" 
+                                                                    checked={!!data.checklist[`${weekId}-${duty.id}-${i}`]} 
+                                                                    onChange={() => toggleCheck(`${weekId}-${duty.id}-${i}`)}
+                                                                    className="w-5 h-5 rounded border-2 border-slate-300 dark:border-slate-600 text-indigo-500" />
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Pause Section */}
+                                <div className="bg-emerald-50 dark:bg-emerald-950/30 border-2 border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center gap-3 mb-5">
+                                        <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-2xl">
+                                            ☕
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">Pause & Reserve</h3>
+                                            <p className="text-sm text-emerald-700 dark:text-emerald-300">{roster.pause.length} Schüler</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {roster.pause.map((student, idx) => {
+                                            const isSick = !!getSick(student);
+                                            const isNext = idx < 2;
+                                            
+                                            return (
+                                                <button key={idx} onClick={() => openSickModal(student)}
+                                                    className={`relative px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                                                        isSick 
+                                                            ? 'bg-red-100 text-red-600 border-2 border-red-200 line-through dark:bg-red-950/50 dark:border-red-800 dark:text-red-400' 
+                                                            : 'bg-white text-emerald-800 border-2 border-emerald-200 hover:border-emerald-300 shadow-sm hover:shadow dark:bg-slate-800 dark:border-emerald-700 dark:text-emerald-300'
+                                                    }`}>
+                                                    {student}
+                                                    {isNext && !isSick && (
+                                                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-500 rounded-full"></span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </main>
+
+                    {/* Modals */}
+                    <Modal isOpen={modals.login} onClose={() => setModals({...modals, login: false})} title="🔐 Admin-Login">
+                        <form onSubmit={(e) => { e.preventDefault(); handleLogin(e.target.pwd.value); }}>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6 text-center text-sm">Bitte Passwort eingeben</p>
+                            <input type="password" name="pwd" autoFocus 
+                                className="w-full px-4 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white mb-6 outline-none focus:border-indigo-500 transition-colors text-center font-bold tracking-wider" 
+                                placeholder="••••" />
+                            <button type="submit" 
+                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl transition-colors">
+                                Anmelden
+                            </button>
+                        </form>
+                    </Modal>
+
+                    <Modal isOpen={modals.sick} onClose={() => setModals({...modals, sick: false})} title="Krankmeldung">
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-red-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+                                🤒
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedStudent}</h3>
+                        </div>
+                        <div className="space-y-3">
+                            <input id="subInput" type="text" placeholder="Name des Ersatzschülers" 
+                                defaultValue={getSick(selectedStudent)?.substitute || ''} 
+                                className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 dark:text-white transition-colors" />
+                            <button onClick={() => updateSick(true, document.getElementById('subInput').value)} 
+                                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors">
+                                Als krank markieren
+                            </button>
+                            <button onClick={() => updateSick(false)} 
+                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-colors">
+                                Als gesund markieren
+                            </button>
+                        </div>
+                    </Modal>
+
+                    <Modal isOpen={modals.settings} onClose={() => setModals({...modals, settings: false})} title="Einstellungen">
+                        <div className="space-y-4">
+                            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="font-semibold text-sm">{isAdmin ? '🔓 Admin' : '🔒 Gast'}</span>
+                                    <button onClick={() => isAdmin ? setIsAdmin(false) : setModals({...modals, settings: false, login: true})} 
+                                        className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors ${isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}>
+                                        {isAdmin ? 'Logout' : 'Login'}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <button onClick={exportData} 
+                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 rounded-xl font-bold transition-colors">
+                                📥 Backup herunterladen
+                            </button>
+
+                            <div className="text-center text-xs text-slate-400 dark:text-slate-600 pt-2">
+                                Version 2026.3.0
+                            </div>
+                        </div>
+                    </Modal>
+                </div>
+            );
+        };
+
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ToastProvider>
+                <App />
+            </ToastProvider>
+        );
+    </script>
+</body>
+</html>
